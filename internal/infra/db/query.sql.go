@@ -10,6 +10,58 @@ import (
 	"time"
 )
 
+const addMessage = `-- name: AddMessage :exec
+INSERT INTO messages (
+    id,
+    chat_id,
+    role,
+    content,
+    tokens,
+    model,
+    erased,
+    order_msg,
+    created_at
+  )
+VALUES(
+    ?,
+    ?,
+    ?,
+    ?,
+    ?,
+    ?,
+    ?,
+    ?,
+    ?
+  )
+`
+
+type AddMessageParams struct {
+	ID        string
+	ChatID    string
+	Role      string
+	Content   string
+	Tokens    int32
+	Model     string
+	Erased    bool
+	OrderMsg  int16
+	CreatedAt time.Time
+}
+
+func (q *Queries) AddMessage(ctx context.Context, arg AddMessageParams) error {
+	_, err := q.db.ExecContext(ctx, addMessage,
+		arg.ID,
+		arg.ChatID,
+		arg.Role,
+		arg.Content,
+		arg.Tokens,
+		arg.Model,
+		arg.Erased,
+		arg.OrderMsg,
+		arg.CreatedAt,
+	)
+	return err
+}
+
 const createChat = `-- name: CreateChat :exec
 INSERT INTO chats (
     id,
@@ -29,7 +81,24 @@ INSERT INTO chats (
     created_at,
     updated_at
   )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES (
+    ?,
+    ?,
+    ?,
+    ?,
+    ?,
+    ?,
+    ?,
+    ?,
+    ?,
+    ?,
+    ?,
+    ?,
+    ?,
+    ?,
+    ?,
+    ?
+  )
 `
 
 type CreateChatParams struct {
@@ -73,6 +142,27 @@ func (q *Queries) CreateChat(ctx context.Context, arg CreateChatParams) error {
 	return err
 }
 
+const deleteErasedMessagesByChatID = `-- name: DeleteErasedMessagesByChatID :exec
+DELETE FROM messages
+WHERE erased = 1
+  AND chat_id = ?
+`
+
+func (q *Queries) DeleteErasedMessagesByChatID(ctx context.Context, chatID string) error {
+	_, err := q.db.ExecContext(ctx, deleteErasedMessagesByChatID, chatID)
+	return err
+}
+
+const deleteMessagesByChatID = `-- name: DeleteMessagesByChatID :exec
+DELETE FROM messages
+WHERE chat_id = ?
+`
+
+func (q *Queries) DeleteMessagesByChatID(ctx context.Context, chatID string) error {
+	_, err := q.db.ExecContext(ctx, deleteMessagesByChatID, chatID)
+	return err
+}
+
 const findChatByID = `-- name: FindChatByID :one
 SELECT id, user_id, initial_message_id, status, token_usage, model, model_max_tokens, temperature, top_p, n, stop, max_tokens, presence_penalty, frequency_penalty, created_at, updated_at
 FROM chats
@@ -101,4 +191,167 @@ func (q *Queries) FindChatByID(ctx context.Context, id string) (Chat, error) {
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const findErasedMessagesByChatID = `-- name: FindErasedMessagesByChatID :many
+SELECT id, chat_id, role, content, tokens, model, erased, order_msg, created_at
+FROM messages
+WHERE erased = 1
+  AND chat_id = ?
+ORDER BY order_msg ASC
+`
+
+func (q *Queries) FindErasedMessagesByChatID(ctx context.Context, chatID string) ([]Message, error) {
+	rows, err := q.db.QueryContext(ctx, findErasedMessagesByChatID, chatID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Message
+	for rows.Next() {
+		var i Message
+		if err := rows.Scan(
+			&i.ID,
+			&i.ChatID,
+			&i.Role,
+			&i.Content,
+			&i.Tokens,
+			&i.Model,
+			&i.Erased,
+			&i.OrderMsg,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const findMessageByID = `-- name: FindMessageByID :one
+SELECT id, chat_id, role, content, tokens, model, erased, order_msg, created_at
+FROM messages
+WHERE id = ?
+`
+
+func (q *Queries) FindMessageByID(ctx context.Context, id string) (Message, error) {
+	row := q.db.QueryRowContext(ctx, findMessageByID, id)
+	var i Message
+	err := row.Scan(
+		&i.ID,
+		&i.ChatID,
+		&i.Role,
+		&i.Content,
+		&i.Tokens,
+		&i.Model,
+		&i.Erased,
+		&i.OrderMsg,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const findMessagesByChatID = `-- name: FindMessagesByChatID :many
+SELECT id, chat_id, role, content, tokens, model, erased, order_msg, created_at
+FROM messages
+WHERE erased = 0
+  AND chat_id = ?
+ORDER BY order_msg ASC
+`
+
+func (q *Queries) FindMessagesByChatID(ctx context.Context, chatID string) ([]Message, error) {
+	rows, err := q.db.QueryContext(ctx, findMessagesByChatID, chatID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Message
+	for rows.Next() {
+		var i Message
+		if err := rows.Scan(
+			&i.ID,
+			&i.ChatID,
+			&i.Role,
+			&i.Content,
+			&i.Tokens,
+			&i.Model,
+			&i.Erased,
+			&i.OrderMsg,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const saveChat = `-- name: SaveChat :exec
+UPDATE chats
+SET user_id = ?,
+  initial_message_id = ?,
+  status = ?,
+  token_usage = ?,
+  model = ?,
+  model_max_tokens = ?,
+  temperature = ?,
+  top_p = ?,
+  n = ?,
+  stop = ?,
+  max_tokens = ?,
+  presence_penalty = ?,
+  frequency_penalty = ?,
+  updated_at = ?
+WHERE id = ?
+`
+
+type SaveChatParams struct {
+	UserID           string
+	InitialMessageID string
+	Status           string
+	TokenUsage       int32
+	Model            string
+	ModelMaxTokens   int32
+	Temperature      float64
+	TopP             float64
+	N                int16
+	Stop             string
+	MaxTokens        int32
+	PresencePenalty  float64
+	FrequencyPenalty float64
+	UpdatedAt        time.Time
+	ID               string
+}
+
+func (q *Queries) SaveChat(ctx context.Context, arg SaveChatParams) error {
+	_, err := q.db.ExecContext(ctx, saveChat,
+		arg.UserID,
+		arg.InitialMessageID,
+		arg.Status,
+		arg.TokenUsage,
+		arg.Model,
+		arg.ModelMaxTokens,
+		arg.Temperature,
+		arg.TopP,
+		arg.N,
+		arg.Stop,
+		arg.MaxTokens,
+		arg.PresencePenalty,
+		arg.FrequencyPenalty,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	return err
 }

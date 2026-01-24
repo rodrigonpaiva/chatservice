@@ -35,7 +35,71 @@ VALUES (
     ?,
     ?
   );
+-- name: AddMessage :exec
+INSERT INTO messages (
+    id,
+    chat_id,
+    role,
+    content,
+    tokens,
+    model,
+    erased,
+    order_msg,
+    created_at
+  )
+VALUES(
+    ?,
+    ?,
+    ?,
+    ?,
+    ?,
+    ?,
+    ?,
+    ?,
+    ?
+  );
 -- name: FindChatByID :one
 SELECT *
 FROM chats
+WHERE id = ?;
+-- name: FindMessagesByChatID :many
+SELECT *
+FROM messages
+WHERE erased = 0
+  AND chat_id = ?
+ORDER BY order_msg ASC;
+-- name: FindErasedMessagesByChatID :many
+SELECT *
+FROM messages
+WHERE erased = 1
+  AND chat_id = ?
+ORDER BY order_msg ASC;
+-- name: SaveChat :exec
+UPDATE chats
+SET user_id = ?,
+  initial_message_id = ?,
+  status = ?,
+  token_usage = ?,
+  model = ?,
+  model_max_tokens = ?,
+  temperature = ?,
+  top_p = ?,
+  n = ?,
+  stop = ?,
+  max_tokens = ?,
+  presence_penalty = ?,
+  frequency_penalty = ?,
+  updated_at = ?
+WHERE id = ?;
+-- name: DeleteMessagesByChatID :exec
+DELETE FROM messages
+WHERE chat_id = ?;
+-- name: DeleteErasedMessagesByChatID :exec
+DELETE FROM messages
+WHERE erased = 1
+  AND chat_id = ?;
+
+-- name: FindMessageByID :one
+SELECT *
+FROM messages
 WHERE id = ?;
