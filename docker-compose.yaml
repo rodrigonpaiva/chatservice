@@ -1,0 +1,12 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: chat_app
+      MYSQL_USER: root
+    ports:
+      - "3308:3308"
+    volumes:
+      - .docker/mysql:/var/lib/mysql
