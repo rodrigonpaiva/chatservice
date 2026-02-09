@@ -1,0 +1,9 @@
+POST http://localhost:8080/chat HTTP/1.1
+Content-Type: application/json
+Authorization: Bearer secrettoken123
+
+  {
+    "ChatID": "1",
+    "UserID": "1",
+    "UserMessage": "Hello, Qual é o seu nome?"
+  }

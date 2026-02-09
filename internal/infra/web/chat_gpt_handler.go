@@ -5,33 +5,34 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/rodrigonpaiva/fclx/chatservice/internal/usecase/chatcompletionstream"
+	"github.com/rodrigonpaiva/fclx/chatservice/internal/usecase/chatcompletion"
 )
 
-type ChatGPTHandler struct {
-	CompletionUseCase chatcompletionstream.ChatCompletionUseCase
-	Config           chatcompletionstream.ChatCompletionConfigInputDTO
-	AuthToken        string
+type WebChatGPTHandler struct {
+	CompletionsUseCase chatcompletion.ChatCompletionUseCase
+	Config             chatcompletion.ChatCompletionConfigInputDTO
+	AuthToken          string
 }
 
-func NewChatGPTHandler(
-	usecase chatcompletionstream.ChatCompletionUseCase,
-	config chatcompletionstream.ChatCompletionConfigInputDTO,
-	authToken string,
-) *ChatGPTHandler {
-	return &ChatGPTHandler{
-		CompletionUseCase: usecase,
-		Config:           config,
-		AuthToken:        authToken,
+func NewWebChatGPTHandler(completionsUseCase chatcompletion.ChatCompletionUseCase, config chatcompletion.ChatCompletionConfigInputDTO, authToken string) *WebChatGPTHandler {
+	return &WebChatGPTHandler{
+		CompletionsUseCase: completionsUseCase,
+		Config:             config,
+		AuthToken:          authToken,
 	}
 }
 
-func (h *ChatGPTHandler) Handle(w http.ResponseWriter, r *http.Request) {
+func NewChatGPTHandler(completionsUseCase chatcompletion.ChatCompletionUseCase, config chatcompletion.ChatCompletionConfigInputDTO, authToken string) *WebChatGPTHandler {
+	return NewWebChatGPTHandler(completionsUseCase, config, authToken)
+}
+
+func (h *WebChatGPTHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	if r.Header.Get("Authorization") != h.AuthToken {
+
+	if r.Header.Get("Authorization") != "Bearer "+h.AuthToken {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
@@ -47,23 +48,21 @@ func (h *ChatGPTHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var dot chatcompletionstream.ChatCompletionInputDTO
-	err = json.Unmarshal(body, &dot)
+	var dto chatcompletion.ChatCompletionInputDTO
+	err = json.Unmarshal(body, &dto)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	dot.Config = h.Config
+	dto.Config = h.Config
 
-	result, err := h.CompletionUseCase.Execute(r.Context(), dot)
+	result, err := h.CompletionsUseCase.Execute(r.Context(), dto)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
-	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
 }

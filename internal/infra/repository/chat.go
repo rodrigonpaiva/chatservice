@@ -27,7 +27,7 @@ func (r *ChatRepositoryMySQL) CreateChat(ctx context.Context, chat *entity.Chat)
 	err := r.Queries.CreateChat(ctx, db.CreateChatParams{
 		ID:               chat.ID,
 		UserID:           chat.UserID,
-		InitialMessageID: chat.InitialSystemMessage.ID,
+		InitialMessageID: chat.InitialSystemMessage.Content,
 		Status:           chat.Status,
 		TokenUsage:       int32(chat.TokenUsage),
 		Model:            chat.Config.Model.Name,
@@ -35,7 +35,7 @@ func (r *ChatRepositoryMySQL) CreateChat(ctx context.Context, chat *entity.Chat)
 		Temperature:      float64(chat.Config.Temperature),
 		TopP:             float64(chat.Config.TopP),
 		N:                int16(chat.Config.N),
-		Stop:             strings.Join(chat.Config.Stop, ","),
+		Stop:             chat.Config.Stop[0],
 		MaxTokens:        int32(chat.Config.MaxTokens),
 		PresencePenalty:  float64(chat.Config.PresencePenalty),
 		FrequencyPenalty: float64(chat.Config.FrequencyPenalty),

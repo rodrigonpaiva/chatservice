@@ -7,7 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
-	tiktoken "github.com/pkoukk/tiktoken-go"
+	tiktoken "github.com/j178/tiktoken-go"
 )
 
 type Message struct {
@@ -20,11 +20,14 @@ type Message struct {
 }
 
 func NewMessage(role, content string, model *Model) (*Message, error) {
-	tke, err := tiktoken.EncodingForModel(model.GetModelName())
+	codec, err := tiktoken.ForModel(model.GetModelName())
 	if err != nil {
 		return nil, err
 	}
-	totalTokens := len(tke.Encode(content, nil, nil))
+	totalTokens, err := codec.Count(content)
+	if err != nil {
+		return nil, err
+	}
 	msg := &Message{
 		ID:        uuid.New().String(),
 		Role:      role,
