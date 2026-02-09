@@ -1,21 +1,22 @@
-## Chat Service
+# Chat Service
 
 Go service that exposes:
+
 - HTTP endpoint `/chat` (REST)
 - gRPC service `ChatService.ChatStream` (server streaming)
 - MySQL persistence for chats/messages
 
-### Requirements
+## Requirements
 
 - Go 1.24+
 - Docker + Docker Compose
 - `protoc` + Go plugins (for gRPC codegen)
 
-### Configuration
+## Configuration
 
 Create a `.env` in the project root:
 
-```
+```bash
 DB_DRIVER=mysql
 DB_HOST=127.0.0.1
 DB_PORT=3306
@@ -37,31 +38,32 @@ AUTH_TOKEN=secrettoken123
 ```
 
 Notes:
+
 - `MODEL` must be supported by `tiktoken-go` (ex: `gpt-3.5-turbo`, `gpt-4`).
 - `AUTH_TOKEN` is required for HTTP requests.
 - gRPC currently has no auth.
 
-### Run MySQL
+## Run MySQL
 
-```
+```bash
 docker compose up -d
 ```
 
-### Run Migrations
+## Run Migrations
 
-```
+```bash
 make migrate
 ```
 
-### Run HTTP Server
+## Run HTTP Server
 
-```
+```bash
 go run cmd/chatservice/main.go
 ```
 
-### HTTP Request (REST)
+## HTTP Request (REST)
 
-```
+```bash
 POST http://localhost:8080/chat
 Content-Type: application/json
 Authorization: Bearer secrettoken123
@@ -73,11 +75,11 @@ Authorization: Bearer secrettoken123
 }
 ```
 
-### gRPC Codegen
+## gRPC Codegen
 
 Install protoc and plugins (Debian-based container example):
 
-```
+```bash
 apt-get update && apt-get install -y protobuf-compiler
 go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
 go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1
@@ -86,21 +88,21 @@ export PATH="$PATH:$(go env GOPATH)/bin"
 
 Generate stubs:
 
-```
+```bash
 make grpc
 ```
 
-### gRPC (Postman)
+## gRPC (Postman)
 
 Reflection is enabled in the server. Use:
 
-```
+```bash
 dns:localhost:50052
 ```
 
 Then select `ChatService` -> `ChatStream`.
 
-### Troubleshooting
+## Troubleshooting
 
 - If MySQL fails to start with root user error, ensure `docker-compose.yaml` does not set `MYSQL_USER=root`.
 - If you get `connection refused`, confirm the container is running: `docker ps`.
