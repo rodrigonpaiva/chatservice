@@ -5,7 +5,7 @@ services:
     volumes:
       - .:/go/src
     ports:
-      - "8080:8080"
+      - "8081:8080"
       - "50052:50051"
 
   mysql:
