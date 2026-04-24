@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -24,47 +25,49 @@ func NewChatRepositoryMySQL(dbt *sql.DB) *ChatRepositoryMySQL {
 }
 
 func (r *ChatRepositoryMySQL) CreateChat(ctx context.Context, chat *entity.Chat) error {
-	err := r.Queries.CreateChat(ctx, db.CreateChatParams{
-		ID:               chat.ID,
-		UserID:           chat.UserID,
-		InitialMessageID: chat.InitialSystemMessage.Content,
-		Status:           chat.Status,
-		TokenUsage:       int32(chat.TokenUsage),
-		Model:            chat.Config.Model.Name,
-		ModelMaxTokens:   int32(chat.Config.Model.MaxTokens),
-		Temperature:      float64(chat.Config.Temperature),
-		TopP:             float64(chat.Config.TopP),
-		N:                int16(chat.Config.N),
-		Stop:             chat.Config.Stop[0],
-		MaxTokens:        int32(chat.Config.MaxTokens),
-		PresencePenalty:  float64(chat.Config.PresencePenalty),
-		FrequencyPenalty: float64(chat.Config.FrequencyPenalty),
-		CreatedAt:        time.Now(),
-		UpdatedAt:        time.Now(),
+	stop, err := serializeStop(chat.Config.Stop)
+	if err != nil {
+		return err
+	}
+
+	return r.withTx(ctx, func(queries *db.Queries) error {
+		err = queries.CreateChat(ctx, db.CreateChatParams{
+			ID:               chat.ID,
+			UserID:           chat.UserID,
+			InitialMessageID: chat.InitialSystemMessage.ID,
+			Status:           chat.Status,
+			TokenUsage:       int32(chat.TokenUsage),
+			Model:            chat.Config.Model.Name,
+			ModelMaxTokens:   int32(chat.Config.Model.MaxTokens),
+			Temperature:      float64(chat.Config.Temperature),
+			TopP:             float64(chat.Config.TopP),
+			N:                int16(chat.Config.N),
+			Stop:             stop,
+			MaxTokens:        int32(chat.Config.MaxTokens),
+			PresencePenalty:  float64(chat.Config.PresencePenalty),
+			FrequencyPenalty: float64(chat.Config.FrequencyPenalty),
+			CreatedAt:        time.Now(),
+			UpdatedAt:        time.Now(),
+		})
+		if err != nil {
+			return err
+		}
+
+		return queries.AddMessage(
+			ctx,
+			db.AddMessageParams{
+				ID:        chat.InitialSystemMessage.ID,
+				ChatID:    chat.ID,
+				Role:      chat.InitialSystemMessage.Role,
+				Content:   chat.InitialSystemMessage.Content,
+				Tokens:    int32(chat.InitialSystemMessage.Tokens),
+				Model:     chat.Config.Model.Name,
+				Erased:    false,
+				OrderMsg:  0,
+				CreatedAt: chat.InitialSystemMessage.CreatedAt,
+			},
+		)
 	})
-	if err != nil {
-		return err
-	}
-
-	err = r.Queries.AddMessage(
-		ctx,
-		db.AddMessageParams{
-			ID:        chat.InitialSystemMessage.ID,
-			ChatID:    chat.ID,
-			Role:      chat.InitialSystemMessage.Role,
-			Content:   chat.InitialSystemMessage.Content,
-			Tokens:    int32(chat.InitialSystemMessage.Tokens),
-			Model:     chat.Config.Model.Name,
-			Erased:    false,
-			OrderMsg:  0,
-			CreatedAt: chat.InitialSystemMessage.CreatedAt,
-		},
-	)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func (r *ChatRepositoryMySQL) FindChatByID(ctx context.Context, chatID string) (*entity.Chat, error) {
@@ -73,6 +76,12 @@ func (r *ChatRepositoryMySQL) FindChatByID(ctx context.Context, chatID string) (
 	if err != nil {
 		return nil, errors.New("chat not found")
 	}
+
+	stop, err := deserializeStop(res.Stop)
+	if err != nil {
+		return nil, err
+	}
+
 	chat.ID = res.ID
 	chat.UserID = res.UserID
 	chat.Status = res.Status
@@ -85,7 +94,7 @@ func (r *ChatRepositoryMySQL) FindChatByID(ctx context.Context, chatID string) (
 		Temperature:      float32(res.Temperature),
 		TopP:             float32(res.TopP),
 		N:                int(res.N),
-		Stop:             strings.Split(res.Stop, ","),
+		Stop:             stop,
 		MaxTokens:        int(res.MaxTokens),
 		PresencePenalty:  float32(res.PresencePenalty),
 		FrequencyPenalty: float32(res.FrequencyPenalty),
@@ -138,79 +147,127 @@ func (r *ChatRepositoryMySQL) FindChatByID(ctx context.Context, chatID string) (
 }
 
 func (r *ChatRepositoryMySQL) SaveChat(ctx context.Context, chat *entity.Chat) error {
-	params := db.SaveChatParams{
-		ID:               chat.ID,
-		UserID:           chat.UserID,
-		InitialMessageID: chat.InitialSystemMessage.ID,
-		Status:           chat.Status,
-		TokenUsage:       int32(chat.TokenUsage),
-		Model:            chat.Config.Model.Name,
-		ModelMaxTokens:   int32(chat.Config.Model.MaxTokens),
-		Temperature:      float64(chat.Config.Temperature),
-		TopP:             float64(chat.Config.TopP),
-		N:                int16(chat.Config.N),
-		Stop:             strings.Join(chat.Config.Stop, ","),
-		MaxTokens:        int32(chat.Config.MaxTokens),
-		PresencePenalty:  float64(chat.Config.PresencePenalty),
-		FrequencyPenalty: float64(chat.Config.FrequencyPenalty),
-		UpdatedAt:        time.Now(),
-	}
-	err := r.Queries.SaveChat(ctx, params)
+	stop, err := serializeStop(chat.Config.Stop)
 	if err != nil {
 		return err
 	}
-	// delete messages
-	err = r.Queries.DeleteMessagesByChatID(ctx, chat.ID)
-	if err != nil {
-		return err
-	}
-	// delete erased messages
-	err = r.Queries.DeleteErasedMessagesByChatID(ctx, chat.ID)
-	if err != nil {
-		return err
-	}
-	// save messages
-	i := 0
-	for _, message := range chat.Messages {
-		err = r.Queries.AddMessage(
-			ctx,
-			db.AddMessageParams{
-				ID:        message.ID,
-				ChatID:    chat.ID,
-				Role:      message.Role,
-				Content:   message.Content,
-				Tokens:    int32(message.Tokens),
-				Model:     message.Model.Name,
-				Erased:    false,
-				OrderMsg:  int16(i),
-				CreatedAt: message.CreatedAt,
-			},
-		)
+
+	return r.withTx(ctx, func(queries *db.Queries) error {
+		params := db.SaveChatParams{
+			ID:               chat.ID,
+			UserID:           chat.UserID,
+			InitialMessageID: chat.InitialSystemMessage.ID,
+			Status:           chat.Status,
+			TokenUsage:       int32(chat.TokenUsage),
+			Model:            chat.Config.Model.Name,
+			ModelMaxTokens:   int32(chat.Config.Model.MaxTokens),
+			Temperature:      float64(chat.Config.Temperature),
+			TopP:             float64(chat.Config.TopP),
+			N:                int16(chat.Config.N),
+			Stop:             stop,
+			MaxTokens:        int32(chat.Config.MaxTokens),
+			PresencePenalty:  float64(chat.Config.PresencePenalty),
+			FrequencyPenalty: float64(chat.Config.FrequencyPenalty),
+			UpdatedAt:        time.Now(),
+		}
+		err = queries.SaveChat(ctx, params)
 		if err != nil {
 			return err
 		}
-		i++
-	}
-	// save erased messages
-	for _, message := range chat.ErasedMessages {
-		err = r.Queries.AddMessage(
-			ctx,
-			db.AddMessageParams{
-				ID:        message.ID,
-				ChatID:    chat.ID,
-				Content:   message.Content,
-				Role:      message.Role,
-				Tokens:    int32(message.Tokens),
-				Model:     chat.Config.Model.Name,
-				CreatedAt: message.CreatedAt,
-				OrderMsg:  int16(i),
-				Erased:    true,
-			},
-		)
+
+		err = queries.DeleteMessagesByChatID(ctx, chat.ID)
 		if err != nil {
 			return err
 		}
-		i++
+
+		i := 0
+		for _, message := range chat.Messages {
+			err = queries.AddMessage(
+				ctx,
+				db.AddMessageParams{
+					ID:        message.ID,
+					ChatID:    chat.ID,
+					Role:      message.Role,
+					Content:   message.Content,
+					Tokens:    int32(message.Tokens),
+					Model:     message.Model.Name,
+					Erased:    false,
+					OrderMsg:  int16(i),
+					CreatedAt: message.CreatedAt,
+				},
+			)
+			if err != nil {
+				return err
+			}
+			i++
+		}
+
+		for _, message := range chat.ErasedMessages {
+			err = queries.AddMessage(
+				ctx,
+				db.AddMessageParams{
+					ID:        message.ID,
+					ChatID:    chat.ID,
+					Content:   message.Content,
+					Role:      message.Role,
+					Tokens:    int32(message.Tokens),
+					Model:     chat.Config.Model.Name,
+					CreatedAt: message.CreatedAt,
+					OrderMsg:  int16(i),
+					Erased:    true,
+				},
+			)
+			if err != nil {
+				return err
+			}
+			i++
+		}
+
+		return nil
+	})
+}
+
+func serializeStop(stop []string) (string, error) {
+	if stop == nil {
+		stop = []string{}
 	}
-	return nil
+
+	raw, err := json.Marshal(stop)
+	if err != nil {
+		return "", errors.New("error serializing stop: " + err.Error())
+	}
+
+	return string(raw), nil
+}
+
+func deserializeStop(raw string) ([]string, error) {
+	if raw == "" {
+		return []string{}, nil
+	}
+
+	var stop []string
+	if err := json.Unmarshal([]byte(raw), &stop); err == nil {
+		return stop, nil
+	}
+
+	// Backward compatibility for rows persisted before stop was stored as JSON.
+	return strings.Split(raw, ","), nil
+}
+
+func (r *ChatRepositoryMySQL) withTx(ctx context.Context, fn func(*db.Queries) error) error {
+	tx, err := r.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	queries := r.Queries.WithTx(tx)
+	if err := fn(queries); err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }

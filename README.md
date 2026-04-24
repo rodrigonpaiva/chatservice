@@ -41,7 +41,8 @@ Notes:
 
 - `MODEL` must be supported by `tiktoken-go` (ex: `gpt-3.5-turbo`, `gpt-4`).
 - `AUTH_TOKEN` is required for HTTP requests.
-- gRPC currently has no auth.
+- `STOP` must be a JSON array of strings (ex: `[]` or `["\\super-end\\"]`).
+- gRPC requires the authorization metadata token.
 
 ## Run MySQL
 
